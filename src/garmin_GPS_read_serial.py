@@ -83,4 +83,5 @@ if __name__ == '__main__':
     while not rospy.is_shutdown():
         GPS.set_serial()
         GPS.serial_read()
+        
         rate.sleep()
