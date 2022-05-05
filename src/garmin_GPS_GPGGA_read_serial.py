@@ -20,6 +20,9 @@ class GPS :
         self.Latitude = 0.0
         self.Longitude = 0.0
         self.altitude = 0.0
+        self.status = 0
+        self.service = 0
+        self.GPS_ql  = 0
 
     def serial_read(self):
         port_name = rospy.get_param('~port','/dev/ttyUSB0')
@@ -32,37 +35,48 @@ class GPS :
         self.ser.close()
         return self.GPS_data
 
-    #def callback(self):
-
-    def data_adjust(self):
+    def data_adjust(self): 
         data=[]
         data=self.garmin_GPS_data
-        #self.Latitude = (float(data[16:25]))*0.01
-        Latitude = int(data[16:18])
-        Latitude_dec = (float(data[18:25])*0.01)/0.60
-        self.Latitude = Latitude + Latitude_dec
+        raw_data=data.split(',')
+        mode = raw_data[0]
+        UTC = int(raw_data[1])
+        Latitude = float(raw_data[2])*0.01
+        Lat_hem = raw_data[3]
+        Longitude = float(raw_data[4])*0.01
+        Log_hem = raw_data[5]
+        self.GPS_ql =int(raw_data[6])
+        GPS_num = raw_data[7]
+        self.altitude = float(raw_data[9])
 
-        #self.Longitude = (float(data[28:38]))*0.01
-        Longitude = int(data[28:31])
-        Longitude_dec = (float(data[31:38])*0.01)/0.60
-        self.Longitude = Longitude + Longitude_dec
-
-        self.altitude = 0.0
+        JTC = UTC+90000
+        Latitude_dec = (Latitude-int(Latitude))/0.6
+        self.Latitude = int(Latitude)+Latitude_dec
+        Longitude_dec = (Longitude-int(Longitude))/0.6
+        self.Longitude = int(Longitude)+Longitude_dec
 
 
 
     def publisher(self):
-        Fix = NavSatStatus()
-        #Fix.status = GPS.mode
-        #Fix.service = GPS.numSat
         self.GPS_data.header.frame_id = 'gps'
         self.GPS_data.header.stamp = rospy.Time.now()
-        #self.GPS_data.status = Fix
+        
+        if self.GPS_ql==0 :
+            self.status = -1
+        elif self.GPS_ql== 1 :
+            self.status =  0
+        elif self.GPS_ql== 2 :
+            self.status = 2
+        else :
+            self.status = 1
+
+        self.GPS_data.status.status = self.status
+        self.GPS_data.status.service = self.service
         self.GPS_data.latitude  = self.Latitude
         self.GPS_data.longitude = self.Longitude
-        #self.GPS_data.altitude  = 0.0
-        #self.GPS_data.position_covariance = (0, 0, 0, 0, 0, 0, 0, 0, 0)
-        #self.GPS_data.position_covariance_type = 0
+        self.GPS_data.altitude  = self.altitude
+        self.GPS_data.position_covariance = (0, 0, 0, 0, 0, 0, 0, 0, 0)
+        self.GPS_data.position_covariance_type = 0
         rospy.loginfo(self.GPS_data)
         self.pub.publish(self.GPS_data)
 
@@ -73,7 +87,7 @@ if __name__ == '__main__':
     rate = rospy.Rate(1000)
     while not rospy.is_shutdown():
         GPS.serial_read()
-        if len(GPS.garmin_GPS_data) == 74 :
+        if len(GPS.garmin_GPS_data) >= 66 :
             GPS.data_adjust()
             rospy.loginfo(GPS.garmin_GPS_data)
             GPS.publisher()
@@ -81,6 +95,7 @@ if __name__ == '__main__':
         elif len(GPS.garmin_GPS_data) == 0 :
             rospy.loginfo(GPS.garmin_GPS_data)
             rospy.loginfo("GPS LOST")
+
 
         else :
             rospy.loginfo(GPS.garmin_GPS_data)
